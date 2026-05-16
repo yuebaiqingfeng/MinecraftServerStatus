@@ -4,7 +4,6 @@
 from typing import List, Tuple, Type, Optional, Dict
 import re
 import random
-import time
 
 from mcstatus import JavaServer
 from aiomcrcon import Client as RCONClient
@@ -13,9 +12,7 @@ from src.plugin_system import BasePlugin, register_plugin, ComponentInfo, BaseCo
 from src.plugin_system.base.config_types import ConfigField
 
 
-# 查询缓存
-status_cache: Dict[str, tuple[float, str]] = {}
-CACHE_EXPIRE = 30  # 缓存过期时间，30秒
+
 
 
 class MinecraftServerStatusCommand(BaseCommand):
@@ -40,16 +37,6 @@ class MinecraftServerStatusCommand(BaseCommand):
             if group_id_str not in group_mapping:
                 print(f"[MCServerStatus] 未配置的群组: {group_id_str}")
                 return False, "group_not_configured", False
-            
-            # 检查缓存
-            now = time.time()
-            cache_key = f"status_{group_id_str}"
-            if cache_key in status_cache:
-                cache_time, cache_msg = status_cache[cache_key]
-                if now - cache_time < CACHE_EXPIRE:
-                    print(f"[MCServerStatus] 使用缓存结果, 群组: {group_id_str}")
-                    await self.send_text(cache_msg)
-                    return True, "cache_hit", True
             
             # 解析服务器配置
             server_config = group_mapping[group_id_str]
@@ -108,6 +95,17 @@ class MinecraftServerStatusCommand(BaseCommand):
             msg += f"🔌 服务器版本：{status.version.name}\n"
             if tps:
                 msg += f"⚡ 服务器TPS：{tps}\n"
+            # 添加MOTD欢迎语
+            motd = ""
+            if isinstance(status.description, str):
+                motd = status.description
+            elif hasattr(status.description, 'text'):
+                motd = status.description.text
+            elif hasattr(status.description, '__str__'):
+                motd = str(status.description)
+            motd = re.sub(r'§[0-9a-fk-or]', '', motd).strip()
+            if motd:
+                msg += f"📝 欢迎语：{motd}\n"
             msg += "──────────────\n"
             
             # 处理玩家列表
@@ -138,9 +136,7 @@ class MinecraftServerStatusCommand(BaseCommand):
                 else:
                     msg += "✨ 在线玩家：服务器未返回详情"
             
-            # 存入缓存
-            status_cache[cache_key] = (now, msg)
-            print(f"[MCServerStatus] 查询完成，结果已缓存")
+            print(f"[MCServerStatus] 查询完成")
             
             await self.send_text(msg)
             return True, "success", True
